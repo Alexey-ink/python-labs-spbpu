@@ -20,8 +20,9 @@ class Test(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    category: Mapped[str] = mapped_column(String(255), nullable=False)
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
 
+    category: Mapped["Category"] = relationship("Category", back_populates="tests")
     questions: Mapped[List["Question"]] = relationship("Question", back_populates="test", cascade="all, delete")
 
 class Question(Base):
@@ -44,6 +45,15 @@ class Option(Base):
     question: Mapped["Question"] = relationship("Question", back_populates="options")
 
 Question.options: Mapped[List["Option"]] = relationship("Option", back_populates="question", cascade="all, delete")
+
+class Category(Base):
+    __tablename__ = 'categories'
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # Связь с тестами: одна категория может иметь много тестов
+    tests: Mapped[List["Test"]] = relationship("Test", back_populates="category")
 
 async def async_main():
     async with engine.begin() as conn:
