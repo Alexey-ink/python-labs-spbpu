@@ -38,3 +38,13 @@ async def choose_category():
     keyboard.add(InlineKeyboardButton(text='Создать новую тематику', callback_data='create_new_category'))
     keyboard.add(InlineKeyboardButton(text='Назад', callback_data='to_main'))
     return keyboard.adjust(2).adjust(1, 1).as_markup()
+
+async def test_created_keyboard(test_id: int) -> InlineKeyboardMarkup:
+    # Это клавиатура для пользователя, которая появляется после создания теста
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Создать вопрос", callback_data=f"create-question_{test_id}")],
+            [InlineKeyboardButton(text="Главное меню", callback_data="to_main")]
+        ]
+    )
+
