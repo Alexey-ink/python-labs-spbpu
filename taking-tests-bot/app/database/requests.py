@@ -38,7 +38,6 @@ async def get_categories():
 
 async def new_category(topic: str):
     async with async_session() as session:
-        # Проверка, существует ли категория с таким названием
         result = await session.execute(select(Category).filter(Category.name == topic))
         existing_category = result.scalar_one_or_none()
 
@@ -49,8 +48,8 @@ async def new_category(topic: str):
 
 async def create_test(test_name: str, category_id: int):
     try:
-        async with async_session() as session:  # Используем асинхронный контекст сессии
-            # Проверяем, существует ли категория
+        async with async_session() as session:
+
             category = await session.get(Category, category_id)
             if not category:
                 raise Exception(f"Категория с ID {category_id} не найдена")
@@ -59,8 +58,6 @@ async def create_test(test_name: str, category_id: int):
             session.add(new_test)
 
             await session.commit()
-            
-            # Получаем обновленные данные о новом тесте
             await session.refresh(new_test)
 
             logging.info(f"Тест '{test_name}' с ID {new_test.id} успешно создан")
@@ -73,7 +70,6 @@ async def create_test(test_name: str, category_id: int):
 
 async def get_user_category(tg_id: int):
     async with async_session() as session:
-        # Получаем категорию пользователя, если она была выбрана
         user_category = await session.scalar(select(Category).where(Category.id == tg_id))
         if not user_category:
             raise ValueError("Категория не была выбрана.")
@@ -83,7 +79,7 @@ async def get_user_category(tg_id: int):
 async def get_all_tests():
     async with async_session() as session:
         result = await session.scalars(
-            select(Test).options(joinedload(Test.category))  # Используем joinedload для загрузки категории
+            select(Test).options(joinedload(Test.category)) 
             .order_by(Test.id)
         )
         return result.all()
@@ -94,9 +90,9 @@ async def get_questions_by_test(test_id: int):
         result = await session.execute(
             select(Question)
             .where(Question.test_id == test_id)
-            .options(selectinload(Question.options))  # Используем selectinload для подгрузки связанных коллекций
+            .options(selectinload(Question.options))
         )
-        questions = result.scalars().all()  # Получаем список вопросов
+        questions = result.scalars().all()
         return questions
 
 
@@ -150,14 +146,12 @@ async def get_tests_by_category(category_id: int):
 
 async def delete_question(question_id: int):
     async with async_session() as session:
-        # Получаем вопрос по ID
         question = await session.get(Question, question_id)
         
         if question:
             await session.delete(question)
             await session.commit()
         else:
-            # Возвращаем ошибку, если вопрос не найден
             raise Exception(f"Вопрос с ID {question_id} не найден.")
         
 
@@ -166,7 +160,7 @@ async def get_question_by_id(question_id: int):
         result = await session.execute(
             select(Question).where(Question.id == question_id)
         )
-        question = result.scalars().first()  # Получаем первый результат (должен быть один вопрос или None)
+        question = result.scalars().first() 
         return question
     
 
@@ -175,7 +169,7 @@ async def get_test_by_id(test_id: int):
         result = await session.execute(
             select(Test).where(Test.id == test_id)
         )
-        test = result.scalars().first()  # Получаем первый результат (должен быть один тест или None)
+        test = result.scalars().first()
         return test
     
 
@@ -192,7 +186,6 @@ async def delete_category(category_id: int):
                 await session.delete(test)
             await session.commit()
 
-            # Теперь удаляем саму категорию
             await session.delete(category)
             await session.commit()
         else:
@@ -203,11 +196,9 @@ async def delete_test(test_id: int):
         # Включаем поддержку внешних ключей для SQLite
         await session.execute(text("PRAGMA foreign_keys = ON;"))
 
-        # Получаем тест по ID
         test = await session.get(Test, test_id)
         
         if test:
-            # Удаляем все вопросы, связанные с тестом
             questions_to_delete = await session.scalars(select(Question).where(Question.test_id == test_id))
             for question in questions_to_delete:
                 await session.delete(question)

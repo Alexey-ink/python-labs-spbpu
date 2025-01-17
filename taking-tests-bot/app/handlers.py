@@ -1,8 +1,8 @@
-from aiogram import F, Router
+from aiogram import F, Router, types
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from aiogram.fsm.state import State, StatesGroup
@@ -10,6 +10,7 @@ from aiogram.fsm.context import FSMContext
 
 import app.database.requests as rq
 import app.keybords as kb
+import random
 
 import logging
 
@@ -19,6 +20,7 @@ class Form(StatesGroup):
     waiting_for_question_text = State()  # Ожидание ввода текста вопроса
     waiting_for_question_options = State()  # Ожидание ввода вариантов для вопроса
     waiting_for_correct_option = State()  # Ожидание выбора правильного ответа для вопроса
+    testing = State()
 
 router = Router()
 
@@ -64,7 +66,7 @@ async def handle_delete_topic_test(callback: CallbackQuery):
 @router.callback_query(F.data == 'delete-test')
 async def handle_delete_test(callback: CallbackQuery):
     """Обработчик для выбора теста для удаления."""
-    tests = await rq.get_all_tests()  # Получаем список тестов
+    tests = await rq.get_all_tests() 
 
     if not tests:
         await callback.answer("Нет доступных тестов для удаления.", show_alert=True)
@@ -89,7 +91,7 @@ async def confirm_delete_test(callback: CallbackQuery):
     test_id = int(callback.data.split('_')[2])
 
     try:
-        await rq.delete_test(test_id)  # Функция для удаления теста из базы данных
+        await rq.delete_test(test_id)
         await callback.message.edit_text("Тест успешно удален.", reply_markup=None)
         await callback.message.answer("Выберите пункт меню:", reply_markup=kb.main)
         
@@ -99,7 +101,7 @@ async def confirm_delete_test(callback: CallbackQuery):
 @router.callback_query(F.data == 'delete-topic')
 async def handle_delete_topic(callback: CallbackQuery):
     """Обработчик для выбора темы для удаления."""
-    categories = await rq.get_categories()  # Получаем список всех категорий
+    categories = await rq.get_categories()
 
     if not categories:
         await callback.answer("Нет доступных тем для удаления.", show_alert=True)
@@ -123,12 +125,11 @@ async def confirm_delete_category(callback: CallbackQuery):
     category_id = int(callback.data.split('_')[2])
 
     try:
-        await rq.delete_category(category_id)  # Функция для удаления категории из базы данных
+        await rq.delete_category(category_id) 
         await callback.message.edit_text("Тема успешно удалена.", reply_markup=None)
         await callback.message.answer("Выберите пункт меню:", reply_markup=kb.main)
     except Exception as e:
         await callback.message.answer(f"Ошибка при удалении темы: {e}")
-
 
 
 @router.callback_query(F.data == 'create_new_category')
@@ -137,7 +138,7 @@ async def create_new_category(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         text="Введите название новой темы для тестов",
     )
-    await state.set_state(Form.waiting_for_category_name)  # Ожидание ввода категории
+    await state.set_state(Form.waiting_for_category_name) 
 
 
 @router.message(Form.waiting_for_category_name)
@@ -151,20 +152,20 @@ async def process_new_category(message: Message, state: FSMContext):
             text="Выберите тему или создайте новую:",
             reply_markup=await kb.choose_category()
             )
-        await state.clear() # Сброс состояния
+        await state.clear()
     except Exception as e:
         await message.answer(f"Произошла ошибка при создании категории: {e}")
 
 
 @router.callback_query(F.data.startswith('category_'))
 async def choose_category(callback: CallbackQuery, state: FSMContext):
-    category_id = int(callback.data.split('_')[1])  # Получаем ID категории
+    category_id = int(callback.data.split('_')[1])  
     await callback.answer('')
     await callback.message.edit_text(
         text="Введите название нового теста:",
     )
-    await state.update_data(category_id=category_id)  # Сохраняем выбранную категорию в контексте
-    await state.set_state(Form.waiting_for_test_name)  # Ожидание ввода теста
+    await state.update_data(category_id=category_id) 
+    await state.set_state(Form.waiting_for_test_name)  
 
 
 @router.message(Form.waiting_for_test_name)
@@ -179,98 +180,50 @@ async def process_new_test(message: Message, state: FSMContext):
         data = await state.get_data()
         category_id = data.get('category_id')
 
-        # Создаем тест и проверяем результат
+
         new_test = await rq.create_test(test_name, category_id)
         if not new_test:
             raise Exception("Не удалось создать тест. Возможно, произошла ошибка в базе данных.")
 
-        # Отправляем клавиатуру с кнопкой для создания вопроса
         await message.answer(
             f"Тест '{test_name}' успешно создан!",
-            reply_markup=await kb.test_created_keyboard(new_test.id)  # Используем ID нового теста
+            reply_markup=await kb.test_created_keyboard(new_test.id) 
         )
-        await state.clear()  # Сброс состояния
+        await state.clear()
     except Exception as e:
         await message.answer(f"Произошла ошибка при создании теста: {e}")
-
-
-@router.callback_query(F.data == 'take-test')
-async def take_test(callback: CallbackQuery, state: FSMContext):
-    categories = await rq.get_categories()
-    
-    if not categories:
-        await callback.answer("Нет доступных категорий для тестов.")
-        return
-    
-    # Отправляем список категорий для выбора
-    keyboard = await kb.categories()
-    await callback.message.edit_text(
-        text="Выберите категорию для прохождения теста:",
-        reply_markup=keyboard
-    )
-    
-    # Устанавливаем состояние для выбора категории
-    await state.set_state(Form.waiting_for_category_name)
 
 
 @router.callback_query(F.data == 'show-tests')
 async def show_tests(callback: CallbackQuery):
     await callback.answer('')
     try:
-        tests = await rq.get_all_tests()  # Получаем список всех тестов с категориями
+        tests = await rq.get_all_tests()
 
-        # Формируем текстовый список тестов
         if tests:
             test_list = "\n".join([f"<i>📝</i> <b> {test.title} </b> - <i>Тема:</i> {test.category.name}\n" for test in tests])
         else:
             test_list = "<i>Нет доступных тестов.</i>"
 
-        # Удаляем меню и пересылаем сообщение с тестами
         await callback.message.edit_text(
             text=f"<b>Существующие тесты:\n</b>\n{test_list}",
             reply_markup=None,
             parse_mode="HTML"
         )
 
-        # Отправляем главное меню после списка тестов
         await callback.message.answer("Выберите пункт меню:", reply_markup=kb.main, parse_mode="HTML")
 
     except Exception as e:
         await callback.message.answer(f"Произошла ошибка при получении тестов: <i>{e}</i>", parse_mode="HTML")
 
 
-
-@router.callback_query(F.data.startswith('test_'))
-async def start_test(callback: CallbackQuery, state: FSMContext):
-    test_id = int(callback.data.split('_')[1])  # Получаем ID выбранного теста
-    data = await state.get_data()
-    category_id = data.get('category_id')
-
-    # Получаем информацию о выбранном тесте
-    test = await rq.get_test_by_id(test_id)
-    
-    if not test:
-        await callback.answer("Тест не найден.")
-        return
-
-    # Пример начала теста — можно добавить логику для этого
-    await callback.message.edit_text(
-        text=f"Начинаем тест: {test.title}. Удачи!",
-        reply_markup=kb.start_test_keyboard() 
-    )
-
-
 @router.callback_query(F.data.startswith('create-question_'))
 async def create_question(callback: CallbackQuery, state: FSMContext):
     await callback.answer('')
     
-    # Получаем ID теста, к которому нужно добавить вопрос
-    test_id = int(callback.data.split('_')[1])  # Получаем ID теста из callback_data
-
-    # Сохраняем ID теста в контексте
+    test_id = int(callback.data.split('_')[1]) 
     await state.update_data(test_id=test_id)
 
-    # Запрашиваем у пользователя текст вопроса
     await callback.message.edit_text(
         text="Введите текст вопроса для этого теста:"
     )
@@ -285,7 +238,6 @@ async def process_new_question(message: Message, state: FSMContext):
         await message.answer("Текст вопроса не может быть пустым. Попробуйте снова.")
         return
 
-    # Сохраняем текст вопроса в состоянии и запрашиваем варианты ответов
     await state.update_data(question_text=question_text)
     
     await message.answer("Теперь введите варианты ответа для этого вопроса (по одному на каждое сообщение):")
@@ -301,11 +253,9 @@ async def process_question_options(message: Message, state: FSMContext):
         await message.answer("Вариант ответа не может быть пустым. Попробуйте снова.")
         return
 
-    # Добавляем вариант в список вариантов
     data = await state.get_data()
     question_options = data.get('question_options', [])
 
-    # Проверяем, что количество вариантов не превышает 4
     if len(question_options) >= 4:
         await message.answer("Максимальное количество вариантов ответа — 4. Пожалуйста, завершите ввод.")
         return
@@ -313,7 +263,6 @@ async def process_question_options(message: Message, state: FSMContext):
     question_options.append(options)
     await state.update_data(question_options=question_options)
 
-    # Запрашиваем следующий вариант ответа
     if len(question_options) < 4:
         await message.answer("Введите следующий вариант ответа или отправьте 'Готово', чтобы завершить создание вопроса.")
     else:
@@ -330,7 +279,6 @@ async def process_correct_option(message: Message, state: FSMContext):
             await message.answer("Номер правильного ответа должен быть от 1 до 4. Попробуйте снова.")
             return
 
-        # Логируем данные состояния
         data = await state.get_data()
         logging.info(f"Полученные данные: {data}")
 
@@ -341,16 +289,12 @@ async def process_correct_option(message: Message, state: FSMContext):
             await message.answer("Недостаточное количество вариантов ответа. Проверьте ввод.")
             return
 
-        # Сохраняем correct_option в состоянии
         await state.update_data(correct_option=correct_option)
 
-        # Получаем все данные из состояния
         data = await state.get_data()
 
-        # Логируем перед записью в базу данных
         logging.info(f"Добавляем вопрос: {question_text}, варианты: {question_options}, правильный: {correct_option}")
 
-        # Добавляем новый вопрос с вариантами
         await rq.create_question(
             question_text=question_text,
             options=question_options,
@@ -382,7 +326,6 @@ async def handle_add_delete_tests(callback: CallbackQuery):
 async def handle_category_selection(callback: CallbackQuery):
     category_id = int(callback.data.split("_")[1])
     
-    # Получаем тесты в категории
     tests = await rq.get_tests_by_category(category_id)
     
     if not tests:
@@ -398,7 +341,7 @@ async def handle_category_selection(callback: CallbackQuery):
     keyboard.add(InlineKeyboardButton(text="⭕️ Главное меню", callback_data="to_main"))
     
     await callback.message.edit_text(
-        text="Выберите тест для добавления или удаления вопросов:",
+        text="Выберите тест для добавления или удаления вопроса:",
         reply_markup=keyboard.adjust(1).as_markup()
     )
 
@@ -407,10 +350,9 @@ async def handle_category_selection(callback: CallbackQuery):
 async def handle_test_selection(callback: CallbackQuery):
     test_id = int(callback.data.split("_")[1])
     
-    # Клавиатура с действиями
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Добавить вопросы", callback_data=f"add_questions_{test_id}")],
-        [InlineKeyboardButton(text="Удалить вопросы", callback_data=f"delete_questions_{test_id}")],
+        [InlineKeyboardButton(text="Добавить вопрос", callback_data=f"add_questions_{test_id}")],
+        [InlineKeyboardButton(text="Удалить вопрос", callback_data=f"delete_questions_{test_id}")],
         [InlineKeyboardButton(text="⏪ Назад к тестам", callback_data="add-delete-tests")],
         [InlineKeyboardButton(text="⭕️ Главное меню", callback_data="to_main")]
     ])
@@ -435,16 +377,13 @@ async def handle_add_questions(callback: CallbackQuery, state: FSMContext):
         text="Введите текст вопроса для этого теста:"
     )
     
-    # Переходим к состоянию для ввода текста вопроса
     await state.set_state(Form.waiting_for_question_text)
-    # Здесь можно запустить FSM для создания вопросов.
 
 
 @router.callback_query(F.data.startswith("delete_questions_"))
 async def handle_delete_questions(callback: CallbackQuery):
     test_id = int(callback.data.split("_")[2])
 
-    # Получаем вопросы для теста с уникальными данными
     questions = await rq.get_questions_by_test(test_id)
     keyboard = InlineKeyboardBuilder()
     
@@ -461,33 +400,183 @@ async def handle_delete_questions(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("delete_question_"))
 async def handle_delete_question(callback: CallbackQuery, state: FSMContext):
-    # Извлекаем ID вопроса из callback_data
     question_id = int(callback.data.split("_")[2])
 
     try:
-        # Получаем вопрос по ID
         question = await rq.get_question_by_id(question_id)
         
         if not question:
             await callback.answer("Вопрос не найден.")
             return
         
-        # Удаляем вопрос из базы данных
         await rq.delete_question(question_id)
 
-        # Отправляем уведомление пользователю
         await callback.message.edit_text(
             text=f"Вопрос '{question.question_text}' успешно удален.",
-            reply_markup=None  # Можно добавить клавиатуру после удаления, если необходимо
+            reply_markup=None 
         )
         
-        # Вы можете переслать пользователя к предыдущему меню, если нужно
         await callback.message.answer("Выберите пункт меню:", reply_markup=kb.main)
 
     except Exception as e:
         # Обработка ошибок
         logging.error(f"Ошибка при удалении вопроса: {e}")
         await callback.answer(f"Произошла ошибка при удалении вопроса: {e}")
+
+
+
+@router.callback_query(F.data == 'take-test')
+async def take_test(callback: CallbackQuery, state: FSMContext):
+    """Обработчик для выбора категории теста."""
+    categories = await rq.get_categories()
+
+    if not categories:
+        await callback.message.edit_text(
+            text="К сожалению, пока нет доступных категорий для тестов. ⭕️ Главное меню",
+            reply_markup=kb.main 
+        )
+        return
+
+    keyboard = kb.create_category_keyboard(categories)
+
+    await callback.message.edit_text(
+        text="Выберите категорию для прохождения теста:",
+        reply_markup=keyboard
+    )
+
+    await state.set_state(Form.waiting_for_category_name)
+
+
+@router.callback_query(F.data.startswith("exam-category_"))
+async def category_tests_handler(callback: types.CallbackQuery):
+    """Показывает доступные тесты в выбранной категории."""
+    category_id = int(callback.data.split("_")[1]) 
+    tests = await rq.get_tests_by_category(category_id)
+
+    if not tests:
+        await callback.message.edit_text(
+            "В этой категории пока нет тестов. ⭕️ Главное меню",
+            reply_markup=kb.main
+        )
+        return
+
+    keyboard = kb.create_test_keyboard(tests)
+
+    await callback.message.edit_text(
+        "Выберите тест, который хотите пройти:",
+        reply_markup=keyboard,
+    )
+
+
+@router.callback_query(F.data.startswith("start-test_"))
+async def start_test(callback: CallbackQuery, state: FSMContext):
+    """Обработчик для начала теста."""
+    try:
+        test_id = int(callback.data.split("_")[1]) 
+        test = await rq.get_test_by_id(test_id)
+
+        if not test:
+            await callback.message.answer("Этот тест не найден.")
+            return
+
+        questions = await rq.get_questions_by_test(test_id)
+
+        if not questions:
+            await callback.message.answer("В этом тесте нет вопросов.")
+            return
+
+        await callback.message.delete()
+
+        await callback.message.answer(f"Тест на тему «{test.title}» начат! Удачи :)")
+
+        # Сохраняем данные теста в состоянии
+        await state.update_data(test_id=test.id, current_question=0, score=0, total_questions=len(questions))
+
+        # Устанавливаем состояние для теста
+        await state.set_state(Form.testing)  # Устанавливаем состояние "тестирование"
+
+        # Отправляем первый вопрос
+        await send_question(callback.message, questions[0], state)
+
+    except Exception as e:
+        await callback.message.answer(f"Ошибка при запуске теста: {e}")
+
+
+@router.message(Form.testing)
+async def answer_question(message: Message, state: FSMContext):
+    """Обработчик для ответа на вопрос теста."""
+    try:
+        # Получаем данные из состояния
+        user_data = await state.get_data()
+        current_question_index = user_data.get('current_question', 0)
+
+        # Получаем вопросы и правильный ответ для текущего вопроса
+        test_id = user_data.get('test_id')
+        questions = await rq.get_questions_by_test(test_id)
+        question = questions[current_question_index]
+        correct_answer = question.options[question.correct_option - 1].option_text
+
+        user_answer = message.text.strip()  # Ответ пользователя
+
+        # Получаем текущий балл и количество правильных ответов
+        score = user_data.get('score', 0)
+
+        # Проверка правильности ответа
+        if user_answer == correct_answer:
+            score += 1  # Увеличиваем баллы, если ответ правильный
+            await message.answer("Правильный ответ! 🎉")
+        else:
+            await message.answer(f"Неправильный ответ! 😞 Правильный: {correct_answer}")
+
+        # Обновляем данные в состоянии
+        await state.update_data(score=score) 
+
+        # Переход к следующему вопросу
+        current_question_index += 1  # Увеличиваем индекс после проверки ответа
+
+        if current_question_index < len(questions):
+            await state.update_data(current_question=current_question_index)
+            await send_question(message, questions[current_question_index], state)
+        else:
+            # Тест завершен, выводим итоговый результат
+            total_questions = user_data.get('total_questions', 0)
+            await message.answer(
+                f"Тест завершен! Вы набрали {score} баллов из {total_questions}.",
+                reply_markup=kb.main 
+            )
+            await state.clear()  # Очищаем состояние
+
+    except Exception as e:
+        await message.answer(f"Ошибка: {e}")
+
+
+async def send_question(message: Message, question, state: FSMContext):
+    """Отправка вопроса пользователю с обычной клавиатурой."""
+    options = [option.option_text for option in question.options]
+
+    correct_answer = options[question.correct_option - 1]
+    random.shuffle(options)
+
+    await state.update_data(correct_answer=correct_answer)
+
+    keyboard_buttons = []
+    row = []
+    for i, option in enumerate(options):
+        row.append(KeyboardButton(text=option)) 
+        if (i + 1) % 2 == 0 or i == len(options) - 1:
+            keyboard_buttons.append(row) 
+            row = []
+
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=keyboard_buttons,
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+
+    await message.answer(
+        f"Вопрос: {question.question_text}",
+        reply_markup=keyboard
+    )
 
 
 @router.callback_query(F.data == 'to_main')
