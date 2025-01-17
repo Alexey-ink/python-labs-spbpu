@@ -257,14 +257,14 @@ async def process_question_options(message: Message, state: FSMContext):
     question_options = data.get('question_options', [])
 
     if len(question_options) >= 4:
-        await message.answer("Максимальное количество вариантов ответа — 4. Пожалуйста, завершите ввод.")
+        await message.answer("Количество вариантов ответа — 4. Пожалуйста, завершите ввод.")
         return
 
     question_options.append(options)
     await state.update_data(question_options=question_options)
 
     if len(question_options) < 4:
-        await message.answer("Введите следующий вариант ответа или отправьте 'Готово', чтобы завершить создание вопроса.")
+        await message.answer("Введите следующий вариант ответа (всего 4 варианта):")
     else:
         await message.answer("Введите правильный вариант ответа (число от 1 до 4):")
         await state.set_state(Form.waiting_for_correct_option)
